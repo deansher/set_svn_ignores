@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# Written by Dean Thompson.  Original source in https://github.com/deansher/set_svn_ignores
+# Public domain -- use at own risk. Retaining the comment that says I wrote it would be cool.
+# Pull requests for improvements would be cool, too.
+
+# This script sets the svn:ignore property for the current directory and every
+# svn-managed (recursive) subdirectory according to svn_ignore.txt files that
+# can be placed at any level in the tree.  An svn_ignore.txt file is required
+# in the current directory (the "root ignore file").
+#
+# For each (recursive) subdirectory of the current directory, this script searches 
+# upward for the nearest svn_ignore.txt file.  If that file is not the root ignore 
+# file, then it is combined with the root ignore file.
+#
+# Each svn_ignore.txt file must contain one glob pattern per line matching
+# file names (not path names!) that svn should ignore.
+
+set -e
+
+IGNORE_FILE_NAME=svn_ignore.txt
+
+ROOT_IGNORE_FILE="./$IGNORE_FILE_NAME"
+
+if [ ! -f  "$ROOT_IGNORE_FILE" ]; then
+    echo "Must have $ROOT_IGNORE_FILE"
+    exit 1
+fi
+
+TMP_BASE="$(basename $0)"
+TMP_FILE="$(mktemp /tmp/${TMP_BASE}.XXXXXX)"
+
+for DIR in $(find . -type d); do
+    if [[ $DIR != */.svn ]] && svn info "$DIR" >& /dev/null; then
+        IGNORE_FILE_DIR="$DIR"
+        while [ ! -f "$IGNORE_FILE_DIR/$IGNORE_FILE_NAME" ] && [[ $IGNORE_FILE_DIR != "." ]]; do
+            IGNORE_FILE_DIR=$(dirname "$IGNORE_FILE_DIR")
+        done
+        IGNORE_FILE="$IGNORE_FILE_DIR/svn_ignore.txt"
+        echo
+        if [[ $IGNORE_FILE == ./$IGNORE_FILE_NAME ]]; then
+            echo "Using $IGNORE_FILE"
+            F="$IGNORE_FILE"
+        else
+            echo "Using $IGNORE_FILE plus $ROOT_IGNORE_FILE"
+            cat "$ROOT_IGNORE_FILE" > "$TMP_FILE"
+            echo >> "$TMP_FILE"
+            cat "$IGNORE_FILE" >> "$TMP_FILE"
+            F="$TMP_FILE"
+        fi
+        svn propset svn:ignore -F "$F" "$DIR"
+    fi
+done
+
+rm "$TMP_FILE"
+
+     
